@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import tensorflow as tf
-from PIL import Image
+from PIL import Image, ImageOps
 
 # ------------------------------------------------------------
 # Configuración general de la página
@@ -140,6 +140,30 @@ def buscar_archivo(nombre):
 
 
 # ------------------------------------------------------------
+# Preparar la imagen subida para que se parezca a las del entrenamiento
+# (Fruits-360: fruta sola, centrada, imagen cuadrada y fondo blanco)
+# ------------------------------------------------------------
+def preparar_imagen(archivo):
+    imagen = Image.open(archivo)
+    imagen = ImageOps.exif_transpose(imagen)       # respeta la orientación de fotos de celular
+
+    # PNG con transparencia: se pone sobre fondo blanco
+    # (si no, lo transparente se vuelve negro y confunde al modelo)
+    if imagen.mode in ("RGBA", "LA", "P"):
+        imagen = imagen.convert("RGBA")
+        blanco = Image.new("RGBA", imagen.size, (255, 255, 255, 255))
+        imagen = Image.alpha_composite(blanco, imagen)
+    imagen = imagen.convert("RGB")
+
+    # Imagen no cuadrada: se completa con blanco hasta hacerla cuadrada,
+    # así la fruta no se deforma al reducirla a 128x128
+    lado = max(imagen.size)
+    cuadrada = Image.new("RGB", (lado, lado), (255, 255, 255))
+    cuadrada.paste(imagen, ((lado - imagen.width) // 2, (lado - imagen.height) // 2))
+    return cuadrada
+
+
+# ------------------------------------------------------------
 # Carga del modelo y la metadata (una sola vez gracias al caché)
 # ------------------------------------------------------------
 @st.cache_resource
@@ -183,9 +207,9 @@ archivo = st.file_uploader("Sube una imagen de una fruta", type=["jpg", "jpeg", 
 # Predicción (solo cuando hay una imagen)
 # ------------------------------------------------------------
 if archivo is not None:
-    # Abrir la imagen y pasarla a RGB (por si es PNG con transparencia)
-    imagen = Image.open(archivo).convert("RGB")
-    st.image(imagen, caption="Imagen cargada", width="stretch")
+    # Abrir y preparar la imagen (fondo blanco y forma cuadrada)
+    imagen = preparar_imagen(archivo)
+    st.image(imagen, caption="Imagen como la ve el modelo", width="stretch")
 
     # Mismo preprocesamiento del cuaderno: redimensionar a 128x128.
     # El escalado de píxeles ya va dentro del modelo.
